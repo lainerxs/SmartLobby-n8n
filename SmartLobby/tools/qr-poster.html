@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartLobby QR Poster</title>
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <!-- Settings: enter your n8n address and form path -->
+  <section class="tool">
+    <h1>SmartLobby QR Poster</h1>
+    <p>
+      Enter the address where your n8n can be reached, then print.
+      Use your laptop's Wi-Fi IP (e.g. <code>http://192.168.1.25:5678</code>)
+      or your Cloudflare tunnel address (e.g. <code>https://xxxx.trycloudflare.com</code>).
+    </p>
+
+    <label for="base">n8n address (must match WEBHOOK_URL)</label>
+    <input id="base" placeholder="http://192.168.1.25:5678">
+
+    <label for="path">Form path (from the Visitor QR Form node &rarr; Production URL)</label>
+    <input id="path" placeholder="/form/YOUR-FORM-ID">
+
+    <div class="url" id="full"></div>
+
+    <button type="button" onclick="window.print()">Print poster</button>
+  </section>
+
+  <!-- Poster: this part is printed -->
+  <main class="poster">
+    <h2>Welcome!</h2>
+    <div class="sub">Visitor Check-in &mdash; please scan</div>
+
+    <div id="qr"></div>
+
+    <ol class="steps">
+      <li>Scan with your phone camera</li>
+      <li>Fill in your details</li>
+      <li>Have a seat &mdash; instructions arrive by email</li>
+    </ol>
+
+    <div class="foot">
+      Applicants &middot; Interviews &middot; Deliveries &middot; Maintenance &middot; Meetings
+    </div>
+  </main>
+
+  <!-- QR code library (MIT, Kazuhiko Arase) - kept in its own file -->
+  <script src="lib/qrcode.js"></script>
+
+  <!-- Poster logic -->
+  <script src="js/app.js"></script>
+
+</body>
+</html>

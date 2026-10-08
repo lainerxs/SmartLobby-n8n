@@ -1,0 +1,1193 @@
+{
+  "name": "SmartLobby - Visitor Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## SmartLobby - Visitor Routing\nVisitor scans QR -> the employee decides where they go -> if the employee is busy, the front desk calls and logs the answer -> visitor is emailed, board and front desk updated.\n\n**Setup:** connect Gmail, Google Sheets and Telegram credentials; replace `YOUR_GOOGLE_SHEET_ID` (3 Sheets nodes) and `YOUR_TELEGRAM_CHAT_ID` (3 Telegram nodes); edit emails in `Employee Directory` and `Front Desk: Log Call Result`.",
+        "height": 330,
+        "width": 400,
+        "color": 4
+      },
+      "id": "eacd0548-5242-46dd-a071-022f734c8248",
+      "name": "Note - Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5072,
+        -900
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Stage 1 - Check-in\nForm -> find employee email + Visit ID -> add row 'Waiting for host' -> Telegram: new visitor",
+        "height": 164,
+        "width": 312,
+        "color": 7
+      },
+      "id": "e138b120-9e88-4fbd-9574-4c5b7767cb1e",
+      "name": "Note - Step 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5776,
+        -704
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Stage 2 - Ask the employee\nEmail with a one-click form. Waits up to 10 min.\n(Set to 1 min for testing.)",
+        "height": 164,
+        "width": 268,
+        "color": 5
+      },
+      "id": "6707d83b-8dcb-4a63-9095-b1fc6c01e9c4",
+      "name": "Note - Step 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        6480,
+        -720
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Stage 3 - Route the visitor\n**Top (employee answered):** Build Instructions -> email visitor + update board + tell front desk.\n\n**Bottom (no answer):** Telegram tells front desk to CALL -> row turns red 'calling' -> front desk records the call result in the email form -> joins the top path.",
+        "height": 188,
+        "width": 440,
+        "color": 6
+      },
+      "id": "7d324002-50a6-4f2e-a60f-124965c56cce",
+      "name": "Note - Step 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        7184,
+        -720
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Welcome! Visitor Check-in",
+        "formDescription": "Please fill this in. The person you're visiting will be notified and you'll get instructions by email.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Phone"
+            },
+            {
+              "fieldLabel": "Company / From"
+            },
+            {
+              "fieldLabel": "Visit Type",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Walk-in Applicant"
+                  },
+                  {
+                    "option": "Scheduled Interview / Appointment"
+                  },
+                  {
+                    "option": "Delivery"
+                  },
+                  {
+                    "option": "Maintenance / Repair"
+                  },
+                  {
+                    "option": "Meeting"
+                  },
+                  {
+                    "option": "Other"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Person to Visit",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Maria Santos - HR (Applicants & Interviews)"
+                  },
+                  {
+                    "option": "Juan Cruz - Operations Manager"
+                  },
+                  {
+                    "option": "Ana Reyes - Admin (Deliveries)"
+                  },
+                  {
+                    "option": "Mark Lim - Facilities (Maintenance & Repairs)"
+                  },
+                  {
+                    "option": "Front Desk (Not sure / Other)"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Purpose of Visit",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thank you! Please have a seat. You'll receive an email with instructions in a few minutes."
+            }
+          }
+        }
+      },
+      "id": "a693f5f7-82c5-4ea8-a1b2-757e754bc35a",
+      "name": "Visitor QR Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        5552,
+        -480
+      ],
+      "webhookId": "f5caeb1f-e9bb-4dce-9614-b1c258b1be6a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== EDIT THIS LIST: dropdown text -> employee name + email =====\nconst directory = {\n  \"Maria Santos - HR (Applicants & Interviews)\": { name: \"Maria Santos\", email: \"maria@example.com\" },\n  \"Juan Cruz - Operations Manager\":             { name: \"Juan Cruz\",    email: \"juan@example.com\" },\n  \"Ana Reyes - Admin (Deliveries)\":             { name: \"Ana Reyes\",    email: \"ana@example.com\" },\n  \"Mark Lim - Facilities (Maintenance & Repairs)\": { name: \"Mark Lim\",  email: \"mark@example.com\" },\n  \"Front Desk (Not sure / Other)\":              { name: \"Front Desk\",   email: \"frontdesk@example.com\" },\n};\n// ==================================================================\nconst f = $input.first().json;\nconst host = directory[f['Person to Visit']] || directory[\"Front Desk (Not sure / Other)\"];\nconst now = $now;\nreturn [{ json: {\n  visitId: 'V-' + now.toFormat('MMdd-HHmmss'),\n  date: now.toFormat('yyyy-MM-dd'),\n  timeIn: now.toFormat('HH:mm'),\n  visitor: f['Full Name'],\n  email: f['Email'],\n  phone: f['Phone'] || '',\n  company: f['Company / From'] || '',\n  visitType: f['Visit Type'],\n  purpose: f['Purpose of Visit'] || f['Remarks'] || '',\n  hostName: host.name,\n  hostEmail: host.email,\n}}];"
+      },
+      "id": "b27259da-98f4-4607-850a-b64209e66ddb",
+      "name": "Employee Directory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5776,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Visitor Board",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Visit ID",
+              "displayName": "Visit ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time In",
+              "displayName": "Time In",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Visitor",
+              "displayName": "Visitor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Visit Type",
+              "displayName": "Visit Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Host",
+              "displayName": "Host",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Purpose of Visit",
+              "displayName": "Purpose of Visit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Instructions",
+              "displayName": "Instructions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Responded At",
+              "displayName": "Responded At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "5ee4b93f-fa71-4860-b7e4-7c9b9375d186",
+      "name": "Board: Waiting",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        6176,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=🛎️ New visitor ({{ $('Employee Directory').item.json.visitId }})\n👤 {{ $('Employee Directory').item.json.visitor }} {{ $('Employee Directory').item.json.company ? '- ' + $('Employee Directory').item.json.company : '' }}\n📋 {{ $('Employee Directory').item.json.visitType }}\n➡️ For: {{ $('Employee Directory').item.json.hostName }}\n⏳ Waiting for host to respond...",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "365e00a5-c9af-4a16-b625-4d41d79e9aae",
+      "name": "Telegram: New Visitor",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        6368,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "={{ $('Employee Directory').item.json.hostEmail }}",
+        "subject": "=Visitor for you: {{ $('Employee Directory').item.json.visitor }} ({{ $('Employee Directory').item.json.visitType }})",
+        "message": "=Hi {{ $('Employee Directory').item.json.hostName }},\n\nYou have a visitor at the front desk.\n\n━━━━━━━━━━━━━━━━━━\nVISITOR DETAILS\n━━━━━━━━━━━━━━━━━━\n- Name: {{ $('Employee Directory').item.json.visitor }}\n- From: {{ $('Employee Directory').item.json.company || '—' }}\n- Visit type: {{ $('Employee Directory').item.json.visitType }}\n- Purpose: {{ $('Employee Directory').item.json.purpose || '—' }}\n- Arrived: {{ $('Employee Directory').item.json.timeIn }}\n- Visit ID: {{ $('Employee Directory').item.json.visitId }}\n━━━━━━━━━━━━━━━━━━\n\nPlease click the button below and tell us where they should go.",
+        "responseType": "customForm",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decision",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Come in now"
+                  },
+                  {
+                    "option": "Wait in lobby"
+                  },
+                  {
+                    "option": "Come back later"
+                  },
+                  {
+                    "option": "Leave it at the front desk"
+                  },
+                  {
+                    "option": "Approach Front Desk Area"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Where / When",
+              "placeholder": "e.g. Room 2, 3rd floor  |  15 minutes  |  Tomorrow 10:00 AM"
+            },
+            {
+              "fieldLabel": "Note to visitor",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": 10,
+              "resumeUnit": "minutes"
+            }
+          },
+          "appendAttribution": false
+        }
+      },
+      "id": "da895876-6d08-44a3-9e85-4dc9e56562db",
+      "name": "Ask Employee (waits 10 min)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        6560,
+        -480
+      ],
+      "webhookId": "e670d44f-aed8-4aed-9fad-f4ae10aa7b6e"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "331f1e36-a057-47df-ad65-0405ffdf0da5",
+              "leftValue": "={{ $json.data?.Decision ?? '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1af1923a-70f2-4405-95f6-0981cf0a0694",
+      "name": "Did Employee Answer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6784,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn the decision (from the employee OR the front desk) into a clear message for the visitor\nconst v = $('Employee Directory').first().json;\nconst d = $input.first().json.data || {};\nconst where = (d['Where / When'] || '').trim();\nconst note = (d['Note to visitor'] || '').trim();\nconst first = (v.visitor || '').split(' ')[0];\nlet status, instruction;\nswitch (d.Decision) {\n  case 'Come in now':\n    status = 'Sent in';\n    instruction = `Please proceed to ${where || 'the office of ' + v.hostName}. ${v.hostName} is ready for you.`;\n    break;\n  case 'Wait in lobby':\n    status = 'Waiting in lobby';\n    instruction = `Please have a seat in the lobby. ${v.hostName} will meet you${where ? ' in about ' + where : ' shortly'}.`;\n    break;\n  case 'Come back later':\n    status = 'Rescheduled';\n    instruction = `${v.hostName} is not available right now. Please come back ${where ? 'on ' + where : 'at another time'}. Sorry for the inconvenience.`;\n    break;\n  case 'Leave it at the front desk':\n    status = 'Left at front desk';\n    instruction = `Please leave the item with the front desk. ${v.hostName} will pick it up. Thank you!`;\n    break;\n  case 'Employee Unavailable':      // chosen by the FRONT DESK after calling the employee\n  case 'Could not reach employee':  // (older label, kept for safety)\n    status = 'Employee Unavailable';\n    instruction = `We're sorry, ${v.hostName} is not available right now. ${where ? 'Please come back on ' + where + '.' : 'Our front desk will contact you to set a new schedule.'}`;\n    break;\n  case 'Approach Front Desk Area':  // chosen by the employee\n    status = 'Front desk to assist';\n    instruction = 'Please approach the front desk area and they will assist you.';\n    break;\n  default:                          // safety net: unknown answer -> front desk handles it\n    status = 'Front desk to assist';\n    instruction = 'Please approach the front desk and they will assist you.';\n}\nreturn [{ json: {\n  ...v, status, instruction,\n  fullText: `Hi ${first},\\n\\n${instruction}${note ? '\\n\\nNote: ' + note : ''}\\n\\nThank you for visiting!`,\n  respondedAt: $now.toFormat('HH:mm'),\n}}];"
+      },
+      "id": "7b495df8-3ff7-476a-8baf-c737e907e804",
+      "name": "Build Instructions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7904,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Your visit: {{ $json.status }}",
+        "emailType": "text",
+        "message": "={{ $json.fullText }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Front Desk"
+        }
+      },
+      "id": "363da816-9da4-4d66-802d-4a37fd1f6ef1",
+      "name": "Email Visitor",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        8144,
+        -672
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Visitor Board",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Visit ID"
+          ],
+          "schema": [
+            {
+              "id": "Visit ID",
+              "displayName": "Visit ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time In",
+              "displayName": "Time In",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Visitor",
+              "displayName": "Visitor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Visit Type",
+              "displayName": "Visit Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Host",
+              "displayName": "Host",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Purpose of Visit",
+              "displayName": "Purpose of Visit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Instructions",
+              "displayName": "Instructions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Responded At",
+              "displayName": "Responded At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "cbfaf050-7880-4125-9fc5-c5301901bd82",
+      "name": "Board: Update Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        8384,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=✅ {{ $json.visitor }} → {{ $json.status }}\n🗣️ Tell them: {{ $json.instruction }}\n(Email already sent to visitor, board updated)",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "3efe9b9d-854a-4bc1-8eae-e554667d36e2",
+      "name": "Telegram: Tell Front Desk",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        8144,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "26888f91-230d-4ce2-a70d-823b3e6fe3cc",
+              "name": "Visit ID",
+              "value": "={{ $json.visitId }}",
+              "type": "string"
+            },
+            {
+              "id": "514b946a-a582-41e1-b10f-f6d809c18b7f",
+              "name": "Date",
+              "value": "={{ $json.date }}",
+              "type": "string"
+            },
+            {
+              "id": "ecdf1de4-c87c-4005-93fb-a784071298b4",
+              "name": "Time In",
+              "value": "={{ $json.timeIn }}",
+              "type": "string"
+            },
+            {
+              "id": "58f63204-c6cb-4fd9-8af6-5b13a62d40f6",
+              "name": "Visitor",
+              "value": "={{ $json.visitor }}",
+              "type": "string"
+            },
+            {
+              "id": "77b42807-00e3-4775-a232-916039533b14",
+              "name": "Phone",
+              "value": "={{ $json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "3d18bdbc-21db-4f6d-a805-a44e3903c978",
+              "name": "Email",
+              "value": "={{ $json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "d8a3dac9-2a19-42ed-81eb-9a44024e56f7",
+              "name": "Company",
+              "value": "={{ $json.company }}",
+              "type": "string"
+            },
+            {
+              "id": "cb32f4ac-895d-4a26-b0e9-e43422c15d8b",
+              "name": "Visit Type",
+              "value": "={{ $json.visitType }}",
+              "type": "string"
+            },
+            {
+              "id": "520ddaf5-db93-4a51-b166-7899ca8ad321",
+              "name": "Host",
+              "value": "={{ $json.hostName }}",
+              "type": "string"
+            },
+            {
+              "id": "a511734e-7d81-4507-b874-0c4122406b54",
+              "name": "Purpose of Visit",
+              "value": "={{ $json.purpose }}",
+              "type": "string"
+            },
+            {
+              "id": "47c781a5-96ae-4b9e-b3d1-2fe88bf5d913",
+              "name": "Status",
+              "value": "Waiting for host",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "06c00c63-e21c-4c7b-a9c4-b6162cb2d405",
+      "name": "Row: New Visitor",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        6000,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "efa6c468-2e20-4aec-97f9-79210b76976c",
+              "name": "Visit ID",
+              "value": "={{ $json.visitId }}",
+              "type": "string"
+            },
+            {
+              "id": "9f903864-5d7b-4929-a4ae-c36d12ee2901",
+              "name": "Status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "f2e76da6-6227-421d-aea8-74822605080d",
+              "name": "Instructions",
+              "value": "={{ $json.instruction }}",
+              "type": "string"
+            },
+            {
+              "id": "832a0320-cf70-4bea-9a99-1a2b4f388660",
+              "name": "Responded At",
+              "value": "={{ $json.respondedAt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8ae39e06-0018-45cf-9d1f-25c1ce0d4ae5",
+      "name": "Row: Status Update",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        8144,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=⚠️ NO RESPONSE in 10 min\n{{ $('Employee Directory').item.json.hostName }} hasn't answered about {{ $('Employee Directory').item.json.visitor }} ({{ $('Employee Directory').item.json.visitType }}).\n📞 Please CALL {{ $('Employee Directory').item.json.hostName }} now.\n📧 Then open the email 'Call result needed' and record what they said. The visitor and the board will update automatically.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "3af58e33-b0b4-4ee7-b9a1-83f7706b670a",
+      "name": "Telegram: Call the Employee!",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        6992,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7dbf3619-4a2d-4de2-8024-8d10be44e6ce",
+              "name": "Visit ID",
+              "value": "={{ $('Employee Directory').item.json.visitId }}",
+              "type": "string"
+            },
+            {
+              "id": "438cab97-7717-48c1-b70a-1203f9813ed3",
+              "name": "Status",
+              "value": "No response - front desk calling",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b3ac4362-52f9-43b8-aa63-c0319a320712",
+      "name": "Row: Calling Host",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        7216,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Visitor Board",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Visit ID"
+          ],
+          "schema": [
+            {
+              "id": "Visit ID",
+              "displayName": "Visit ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time In",
+              "displayName": "Time In",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Visitor",
+              "displayName": "Visitor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Visit Type",
+              "displayName": "Visit Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Host",
+              "displayName": "Host",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Purpose of Visit",
+              "displayName": "Purpose of Visit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Instructions",
+              "displayName": "Instructions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Responded At",
+              "displayName": "Responded At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "988845c9-fc59-4543-ac24-ad62a89c6a83",
+      "name": "Board: Calling Host",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        7440,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "frontdesk@example.com",
+        "subject": "=Call result needed: {{ $('Employee Directory').item.json.visitor }} is waiting for {{ $('Employee Directory').item.json.hostName }}",
+        "message": "=Please call {{ $('Employee Directory').item.json.hostName }} about this visitor.\n\n━━━━━━━━━━━━━━━━━━\nVISITOR DETAILS\n━━━━━━━━━━━━━━━━━━\n- Name: {{ $('Employee Directory').item.json.visitor }}\n- From: {{ $('Employee Directory').item.json.company || '—' }}\n- Visit type: {{ $('Employee Directory').item.json.visitType }}\n- Purpose: {{ $('Employee Directory').item.json.purpose || '—' }}\n- Arrived: {{ $('Employee Directory').item.json.timeIn }}\n- Visit ID: {{ $('Employee Directory').item.json.visitId }}\n━━━━━━━━━━━━━━━━━━\n\nAfter the call, click the button below and record what {{ $('Employee Directory').item.json.hostName }} said. The visitor will be emailed and the board updated automatically.",
+        "responseType": "customForm",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decision",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Come in now"
+                  },
+                  {
+                    "option": "Wait in lobby"
+                  },
+                  {
+                    "option": "Come back later"
+                  },
+                  {
+                    "option": "Leave it at the front desk"
+                  },
+                  {
+                    "option": "Employee Unavailable"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Where / When",
+              "placeholder": "e.g. Room 2, 3rd floor  |  15 minutes  |  Tomorrow 10:00 AM"
+            },
+            {
+              "fieldLabel": "Note to visitor",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1fde5e10-c3d1-4544-b169-8302f5d398aa",
+      "name": "Front Desk: Log Call Result",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        7664,
+        -256
+      ],
+      "webhookId": "e9ea8bf6-0668-4fb2-97a6-107e59b8b2e7"
+    }
+  ],
+  "connections": {
+    "Visitor QR Form": {
+      "main": [
+        [
+          {
+            "node": "Employee Directory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Employee Directory": {
+      "main": [
+        [
+          {
+            "node": "Row: New Visitor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Board: Waiting": {
+      "main": [
+        [
+          {
+            "node": "Telegram: New Visitor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: New Visitor": {
+      "main": [
+        [
+          {
+            "node": "Ask Employee (waits 10 min)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Employee (waits 10 min)": {
+      "main": [
+        [
+          {
+            "node": "Did Employee Answer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Did Employee Answer?": {
+      "main": [
+        [
+          {
+            "node": "Build Instructions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram: Call the Employee!",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Instructions": {
+      "main": [
+        [
+          {
+            "node": "Email Visitor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Row: Status Update",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram: Tell Front Desk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: New Visitor": {
+      "main": [
+        [
+          {
+            "node": "Board: Waiting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Status Update": {
+      "main": [
+        [
+          {
+            "node": "Board: Update Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: Call the Employee!": {
+      "main": [
+        [
+          {
+            "node": "Row: Calling Host",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Calling Host": {
+      "main": [
+        [
+          {
+            "node": "Board: Calling Host",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Board: Calling Host": {
+      "main": [
+        [
+          {
+            "node": "Front Desk: Log Call Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Front Desk: Log Call Result": {
+      "main": [
+        [
+          {
+            "node": "Build Instructions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Manila"
+  },
+  "tags": []
+}
